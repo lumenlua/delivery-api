@@ -1,106 +1,37 @@
-from fastapi import FastAPI, Request
+from flask import Flask, request, jsonify
 import requests
-import json
-import base64
 import os
-import secrets
-from datetime import datetime, timezone
-from dotenv import load_dotenv
 
-load_dotenv()
+app = Flask(__name__)
 
-app = FastAPI()
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+KEYS_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/lumen-keys/main/keys.json"
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = os.getenv("GITHUB_REPO")
-SELLAUTH_SECRET = os.getenv("SELLAUTH_SECRET")
+@app.route("/")
+def home():
+    return "Lumen API online"
 
-KEYS_PATH = "keys.json"
+@app.route("/check")
+def check_key():
+    key = request.args.get("key", "")
 
-SCRIPT_MAP = {
-    "pls_donate": "pls_donate",
-    "avatar": "avatar",
-    "sab": "SAB",
-    "catalog": "Catalog_Gifter"
-}
-
-
-def generate_key():
-    return "Lumen-" + secrets.token_urlsafe(8)
-
-
-def github_headers():
-    return {
+    headers = {
         "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "Accept": "application/vnd.github+json"
+        "Accept": "application/vnd.github.raw"
     }
 
+    r = requests.get(KEYS_URL, headers=headers)
 
-def get_keys():
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{KEYS_PATH}"
+    if r.status_code != 200:
+        return jsonify({"valid": False, "error": "key database unavailable"})
 
-    r = requests.get(url, headers=github_headers())
     data = r.json()
+    info = data.get("keys", {}).get(key)
 
-    decoded = base64.b64decode(data["content"]).decode()
+    if not info or info.get("active") != True:
+        return jsonify({"valid": False})
 
-    return json.loads(decoded), data["sha"]
+    return jsonify({"valid": True, "owner": info.get("owner", "")})
 
-
-def save_keys(keys, sha):
-    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{KEYS_PATH}"
-
-    encoded = base64.b64encode(
-        json.dumps(keys, indent=2).encode()
-    ).decode()
-
-    payload = {
-        "message": "SellAuth key delivery",
-        "content": encoded,
-        "sha": sha
-    }
-
-    requests.put(url, headers=github_headers(), json=payload)
-
-
-@app.get("/")
-async def home():
-    return {"status": "online"}
-
-
-@app.post("/deliver")
-async def deliver(request: Request):
-
-    secret = request.query_params.get("secret")
-
-    if secret != SELLAUTH_SECRET:
-        return {"success": False}
-
-    data = await request.json()
-
-    script = request.query_params.get("script", "pls_donate")
-
-    script_type = SCRIPT_MAP.get(script)
-
-    if not script_type:
-        return {"success": False}
-
-    keys, sha = get_keys()
-
-    key = generate_key()
-
-    keys[key] = {
-        "discord_id": None,
-        "hwid": None,
-        "script_type": script_type,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "last_hwid_set": None,
-        "expires_at": None
-    }
-
-    save_keys(keys, sha)
-
-    return {
-        "success": True,
-        "delivery": key
-    }
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
