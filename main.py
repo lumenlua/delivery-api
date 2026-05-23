@@ -5,7 +5,7 @@ import os
 app = Flask(__name__)
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-KEYS_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/lumen-keys/main/keys.json"
+KEYS_URL = "https://raw.githubusercontent.com/lumenlua/lumen-keys/main/keys.json"
 
 @app.route("/")
 def home():
